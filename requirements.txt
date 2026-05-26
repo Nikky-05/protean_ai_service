@@ -1,0 +1,25 @@
+# Core web framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Image I/O (always needed — base64/URL → PIL/numpy)
+Pillow==10.2.0
+numpy==1.26.4
+httpx==0.27.2
+
+# Structured logging
+structlog==24.4.0
+
+# ---- Optional ML backends ----
+# Install ONLY in environments that need them. Stub backend works without these.
+# deepface==0.0.93           # age / gender / face detection (TensorFlow backend)
+# tf-keras                   # REQUIRED with deepface on TensorFlow >= 2.16
+#                            # (TF ships Keras 3; deepface/retinaface need Keras 2)
+# insightface==0.7.3         # preferred gender/age face attribute model
+# onnxruntime==1.18.1        # CPU runtime required by InsightFace ONNX models
+# opencv-python==4.10.0.84   # REQUIRED for IMAGE_FACE_DETECTOR=yunet (the
+#                            # default detector); compatible with numpy 1.26.x
+# facenet-pytorch==2.6.0     # FaceNet/MTCNN detector for cleaner crops + age input
+# mediapipe==0.10.14         # CPU-only face detection / crop

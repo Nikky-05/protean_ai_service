@@ -1,0 +1,39 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.env
+.env.local
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.log
+
+# ML weights — NEVER commit
+weights/
+*.h5
+*.pb
+*.onnx
+*.pt
+*.pth
+
+# PII — real ID documents (Aadhaar/PAN/Voter/DL/passport). NEVER commit.
+images/
+screenshots_img/
+*.pdf
+# stray sample/debug images
+image.png
+image copy.png
+face_debug*.jpg
+_preview/
+_b64_input.txt
+_input_full.*
+_face_region.png
+
+# local editor / agent state
+.claude/

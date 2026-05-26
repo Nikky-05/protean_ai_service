@@ -1,0 +1,9 @@
+services:
+  protean-ai:
+    build: .
+    image: protean-ai-services:latest
+    container_name: protean-ai
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
