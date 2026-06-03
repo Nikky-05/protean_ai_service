@@ -26,4 +26,8 @@ def get_predictor() -> Predictor:
         from .mediapipe_impl import MediaPipePredictor
 
         return MediaPipePredictor()
+    if backend == "mivolo":
+        from .mivolo_impl import MiVOLOPredictor
+
+        return MiVOLOPredictor()
     raise ValidationError(f"Unknown IMAGE_AI_BACKEND: {backend!r}")

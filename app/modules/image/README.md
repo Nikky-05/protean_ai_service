@@ -17,6 +17,16 @@ All endpoints delegate to a `Predictor` implementation selected by
 - `stub` - deterministic mock (no ML deps). Use in dev/CI.
 - `deepface` - real predictions via DeepFace (TensorFlow under the hood).
 - `mediapipe` - fast CPU face-detect/crop.
+- `mivolo` - YuNet detection + **MiVOLO** for joint age+gender, with
+  InsightFace `buffalo_l` as the fallback. MiVOLO is more accurate on age
+  than DeepFace's regressor. It is a joint model, so **one inference returns
+  both age and gender** — `/age-predict` and `/gender-predict` share a single
+  cached result per image. On CPU it is a heavy ViT, so unlike the deepface
+  backend it runs **once on a single aligned crop** (no multi-variant voting).
+  Set `IMAGE_MIVOLO_CHECKPOINT` to the weights; without it the backend boots
+  in fallback-only mode (buffalo_l) so the service still runs. The same
+  calibrated abstain gates as deepface (tiny / dark faces) apply, and gender
+  below `IMAGE_MIVOLO_MIN_GENDER_CONFIDENCE` is returned null.
 
 To add a new backend, implement `Predictor` in
 `predictors/<backend>_impl.py` and wire it in `predictors/factory.py`.
