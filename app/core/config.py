@@ -21,8 +21,23 @@ class Settings(BaseSettings):
     ai_api_key: str = Field(default="dev-only-key", min_length=1)
 
     # Image module
-    image_ai_backend: Literal["stub", "deepface", "mediapipe"] = "stub"
+    image_ai_backend: Literal["stub", "deepface", "mediapipe", "mivolo"] = "stub"
     image_model_weights_dir: str | None = None
+
+    # MiVOLO backend (IMAGE_AI_BACKEND=mivolo). MiVOLO is a joint age+gender
+    # model: one inference returns both. On CPU it is a heavy ViT, so this
+    # backend deliberately runs it ONCE per image (age + gender share the
+    # result) on a single aligned crop — not the multi-variant voting the
+    # deepface backend does. InsightFace buffalo_l (which also yields age +
+    # gender) is the fallback when MiVOLO is unavailable or abstains.
+    #   image_mivolo_checkpoint — path to the MiVOLO .pth.tar weights. Left
+    #     null, the backend runs in fallback-only mode (buffalo_l) and logs a
+    #     warning, so the service still boots without the weights present.
+    image_mivolo_checkpoint: str | None = None
+    # Gender is withheld (returned null) when MiVOLO's softmax probability for
+    # the winning label is below this. Matches the deepface backend's stance:
+    # abstain rather than assert a low-confidence M/F on a noisy ID photo.
+    image_mivolo_min_gender_confidence: float = Field(default=0.65, ge=0.0, le=1.0)
 
     # Face-detection quality gates (apply to deepface / mediapipe backends).
     # Predictions are returned as null when no face passes these thresholds —

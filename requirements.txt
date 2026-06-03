@@ -17,8 +17,16 @@ structlog==24.4.0
 # deepface==0.0.93           # age / gender / face detection (TensorFlow backend)
 # tf-keras                   # REQUIRED with deepface on TensorFlow >= 2.16
 #                            # (TF ships Keras 3; deepface/retinaface need Keras 2)
-# insightface==0.7.3         # preferred gender/age face attribute model
+# insightface==0.7.3         # preferred gender/age face attribute model;
+#                            # also the fallback for IMAGE_AI_BACKEND=mivolo
 # onnxruntime==1.18.1        # CPU runtime required by InsightFace ONNX models
+# MiVOLO (IMAGE_AI_BACKEND=mivolo) is NOT on PyPI — install from GitHub:
+#   pip install "git+https://github.com/WildChlamydia/MiVOLO.git"
+# then download the mivolo_imbd.pth.tar checkpoint and point
+# IMAGE_MIVOLO_CHECKPOINT at it. Detection still uses YuNet/opencv, so the
+# yolov8 person-face detector their full pipeline needs is NOT required here.
+# torch>=1.13                # REQUIRED by mivolo (CPU wheel is fine)
+# torchvision                # pulled in alongside torch
 # opencv-python==4.10.0.84   # REQUIRED for IMAGE_FACE_DETECTOR=yunet (the
 #                            # default detector); compatible with numpy 1.26.x
 # facenet-pytorch==2.6.0     # FaceNet/MTCNN detector for cleaner crops + age input
