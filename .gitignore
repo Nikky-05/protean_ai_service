@@ -29,6 +29,7 @@ screenshots_img/
 # stray sample/debug images
 image.png
 image copy.png
+{*}.png
 face_debug*.jpg
 _preview/
 _b64_input.txt

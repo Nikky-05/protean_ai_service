@@ -42,8 +42,12 @@ MiVOLO abstains on gender. Calibrated abstain gates (tiny / dark faces) are
 shared with the deepface backend so a noisy ID photo returns null rather
 than a confidently-wrong label.
 
-Install with `pip install mivolo torch` (plus `insightface` + `onnxruntime`
-for the fallback) and set `IMAGE_AI_BACKEND=mivolo`.
+MiVOLO is not on PyPI — install it from source:
+``pip install "git+https://github.com/WildChlamydia/MiVOLO.git"`` (plus
+``torch``, and ``insightface`` + ``onnxruntime`` for the fallback). Download
+the ``mivolo_imbd.pth.tar`` checkpoint, point ``IMAGE_MIVOLO_CHECKPOINT`` at
+it, and set ``IMAGE_AI_BACKEND=mivolo``. Detection uses YuNet, so MiVOLO's
+own yolov8 person-face detector is not needed here.
 """
 
 from __future__ import annotations
@@ -108,29 +112,30 @@ class _Attributes:
 def _decode_mivolo_output(output: Any, meta: Any) -> tuple[int | None, str | None, float]:
     """Turn a MiVOLO forward pass into (age, gender, gender_confidence).
 
-    MiVOLO normalises age to ``(age - avg) / (max - min)`` and emits two
-    gender logits, so the first output column is denormalised back to years
-    and the gender columns are softmaxed. Attribute names follow the
-    WildChlamydia/MiVOLO repo; anything unexpected raises and the caller
-    falls back to buffalo_l.
+    Mirrors ``MiVOLO.fill_in_results`` exactly so this stays correct against
+    the model. For the joint model each output row is
+    ``[male_logit, female_logit, age_norm]``: age is column 2, denormalised
+    with the checkpoint's ``(age_norm * (max_age - min_age) + avg_age)``, and
+    gender is the softmax over columns 0:2 (index 0 = male, 1 = female).
+    only-age checkpoints emit just the normalised age and no gender.
     """
-    import torch
-
-    row = output[0] if output.ndim > 1 else output
     min_age = float(meta.min_age)
     max_age = float(meta.max_age)
     avg_age = float(meta.avg_age)
-    age_val = float(row[0].item()) * (max_age - min_age) + avg_age
-    age = int(round(age_val))
 
-    gender: str | None = None
-    gender_conf = 0.0
-    if row.shape[0] >= 3:
-        probs = torch.softmax(row[1:3], dim=0)
-        male_p = float(probs[0].item())
-        female_p = float(probs[1].item())
-        gender = "M" if male_p >= female_p else "F"
-        gender_conf = max(male_p, female_p)
+    if bool(getattr(meta, "only_age", False)):
+        age_norm = float(output.reshape(-1)[0].item())
+        age = int(round(age_norm * (max_age - min_age) + avg_age))
+        return age, None, 0.0
+
+    row = output[0]
+    age = int(round(float(row[2].item()) * (max_age - min_age) + avg_age))
+
+    gender_probs = output[:, :2].softmax(-1)[0]
+    male_p = float(gender_probs[0].item())
+    female_p = float(gender_probs[1].item())
+    gender = "M" if male_p >= female_p else "F"
+    gender_conf = max(male_p, female_p)
     return age, gender, gender_conf
 
 
@@ -384,25 +389,51 @@ class MiVOLOPredictor(Predictor):
         Returns (age, gender, gender_confidence), or None when MiVOLO is
         unavailable or the inference fails — the caller then uses buffalo_l.
 
-        NOTE: the input-prep / decode glue targets the WildChlamydia/MiVOLO
-        repo's `MiVOLO` model API. It is wrapped defensively: any mismatch
-        with the installed version disables MiVOLO for the process and logs,
-        so the service keeps serving via the fallback while the glue is
-        pinned to that version on a real run with weights.
+        Builds the model input the same way ``MiVOLO.prepare_crops`` /
+        ``predict`` do (the module-level ``prepare_classification_images`` with
+        the checkpoint's mean/std), bypassing MiVOLO's own YOLO detection since
+        YuNet already located the face. Two details that mirror MiVOLO exactly:
+
+          * ``prepare_classification_images`` does a BGR→RGB swap internally,
+            so the crop is handed over as BGR.
+          * The public IMDB checkpoint is a *with-persons* model that expects a
+            6-channel input (face + body). With no body crop, MiVOLO feeds a
+            zero person tensor — ``prepare_classification_images([None])`` — and
+            concatenates it; the model was trained with person-dropout so this
+            is its legitimate face-only path. We do the same.
+
+        Wrapped defensively: any mismatch disables MiVOLO and falls back to
+        buffalo_l.
         """
         model = self._get_mivolo()
         if model is None:
             return None
         try:
+            import cv2
             import torch
-            from mivolo.model.mi_volo import MiVOLO
+            from mivolo.model.mi_volo import prepare_classification_images
 
-            target = int(getattr(model, "input_size", 224))
-            faces_input = MiVOLO.prepare_classification_images(
-                [face_rgb], target, device="cpu"
-            )
+            face_bgr = cv2.cvtColor(face_rgb, cv2.COLOR_RGB2BGR)
+            data_config = getattr(model, "data_config", {}) or {}
+            mean = data_config.get("mean")
+            std = data_config.get("std")
+            # prepare_classification_images defaults to IMAGENET mean/std when
+            # these are None, which matches MiVOLO's own data_config.
+            kwargs = {}
+            if mean is not None:
+                kwargs["mean"] = mean
+            if std is not None:
+                kwargs["std"] = std
+            size = int(model.input_size)
+            faces_input = prepare_classification_images([face_bgr], size, device="cpu", **kwargs)
+            if getattr(model.meta, "with_persons_model", False):
+                # Zero (absent) body crop — the model's face-only path.
+                person_input = prepare_classification_images([None], size, device="cpu", **kwargs)
+                model_input = torch.cat((faces_input, person_input), dim=1)
+            else:
+                model_input = faces_input
             with torch.no_grad():
-                output = model.inference(faces_input)
+                output = model.inference(model_input)
             age, gender, gender_conf = _decode_mivolo_output(output, model.meta)
         except Exception as e:  # noqa: BLE001 — disable + fall back, never crash
             self._mivolo_failed = True

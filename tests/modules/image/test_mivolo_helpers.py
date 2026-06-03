@@ -12,19 +12,29 @@ from app.modules.image.predictors.factory import get_predictor
 
 
 class _FakeMeta:
+    # Mirrors a joint (age+gender) MiVOLO checkpoint's meta.
     min_age = 1.0
     max_age = 95.0
     avg_age = 36.0
+    only_age = False
+
+
+class _OnlyAgeMeta:
+    min_age = 1.0
+    max_age = 95.0
+    avg_age = 36.0
+    only_age = True
 
 
 def test_decode_mivolo_output_denormalises_age_and_reads_gender():
     torch = pytest.importorskip("torch")
     from app.modules.image.predictors.mivolo_impl import _decode_mivolo_output
 
+    # Real MiVOLO row layout is [male_logit, female_logit, age_norm].
     # age_norm chosen so age == 30: (30 - 36) / (95 - 1)
     age_norm = (30.0 - 36.0) / (95.0 - 1.0)
     # male logit > female logit → "M"
-    output = torch.tensor([[age_norm, 2.0, 0.0]])
+    output = torch.tensor([[2.0, 0.0, age_norm]])
 
     age, gender, conf = _decode_mivolo_output(output, _FakeMeta())
 
@@ -38,13 +48,28 @@ def test_decode_mivolo_output_reads_female_when_female_logit_wins():
     torch = pytest.importorskip("torch")
     from app.modules.image.predictors.mivolo_impl import _decode_mivolo_output
 
-    output = torch.tensor([[0.0, 0.0, 3.0]])
+    # female_logit (col 1) > male_logit (col 0); age_norm 0 → avg_age
+    output = torch.tensor([[0.0, 3.0, 0.0]])
 
     age, gender, conf = _decode_mivolo_output(output, _FakeMeta())
 
-    assert age == 36  # age_norm 0 → avg_age
+    assert age == 36
     assert gender == "F"
     assert conf > 0.9
+
+
+def test_decode_mivolo_output_only_age_checkpoint_has_no_gender():
+    torch = pytest.importorskip("torch")
+    from app.modules.image.predictors.mivolo_impl import _decode_mivolo_output
+
+    # only-age models emit just the normalised age.
+    output = torch.tensor([[(50.0 - 36.0) / (95.0 - 1.0)]])
+
+    age, gender, conf = _decode_mivolo_output(output, _OnlyAgeMeta())
+
+    assert age == 50
+    assert gender is None
+    assert conf == 0.0
 
 
 def test_mivolo_is_a_valid_backend_literal():
